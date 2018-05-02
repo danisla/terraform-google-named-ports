@@ -86,9 +86,12 @@ jobs:
         type: docker-image
         source:
           repository: gcr.io/cloud-solutions-group/terraform-resource
-          tag: beta-backend-helm
+          tag: latest
       inputs:
       - name: terraform
+      params:
+        service_account_json: {{service_account_json}}
+        project_id: {{project_id}}
       run:
         path: bash
         args:
@@ -97,9 +100,17 @@ jobs:
           set -o pipefail
           apk add --update jq
 
+          set -o pipefail
+          SA_JSON=${PWD}/service_account.json
+          cat > ${SA_JSON} <<EOF
+          $service_account_json
+          EOF
+          gcloud auth activate-service-account --key-file ${SA_JSON}
+          gcloud config set project $project_id
+
           EXP_NAME=$(jq -r '.port_name' terraform/metadata)
           EXP_PORT=$(jq -r '.port_number' terraform/metadata)
-          INSTANCE_GROUP=$(jq -r '.instance_group_urls' terraform/metadata)
+          INSTANCE_GROUP=$(jq -r '.instance_group_urls[0]' terraform/metadata)
           NAMED_PORTS="$(gcloud compute instance-groups get-named-ports ${INSTANCE_GROUP} --format=json | jq -r '.[]|"\(.name)=\(.port)"' | tr '\n' ';')"
 
           MATCH="${EXP_NAME}=${EXP_PORT}"
@@ -116,7 +127,7 @@ jobs:
     params:
       action: destroy
       env_name: tf-ex-gke-named-ports
-      terraform_source: terraform-google-named-ports/example-gke-named-ports
+      terraform_source: terraform-google-named-ports/examples/gke-named-ports
       vars:
         network_name: tf-ci-gke-named-ports
         region: us-central1
