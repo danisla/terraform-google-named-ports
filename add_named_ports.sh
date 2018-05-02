@@ -11,7 +11,7 @@ if [[ -n "${GOOGLE_CREDENTIALS}" && -n "${GOOGLE_PROJECT}" ]]; then
     gcloud config set project "${GOOGLE_PROJECT}"
 fi
 
-RES=$(gcloud compute instance-groups set-named-ports ${INSTANCE_GROUP} --named-ports=${NAME}:${PORT} --format=json 2>/dev/null)
+RES=$(gcloud compute instance-groups set-named-ports ${INSTANCE_GROUP} --named-ports=${NAME}:${PORT} --format=json)
 FINGERPRINT=$(jq '.[]|.fingerprint' <<<${RES})
 ID=$(jq '.[]|.id' <<<${RES})
 
