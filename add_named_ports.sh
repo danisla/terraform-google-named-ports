@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash -ex
 
 # Extract JSON args into shell variables
 JQ=$(command -v jq || true)
@@ -6,8 +6,8 @@ JQ=$(command -v jq || true)
 
 eval "$(${JQ} -r '@sh "INSTANCE_GROUP=\(.instance_group) NAME=\(.name) PORT=\(.port)"')"
 
-if [[ -n "${GOOGLE_CREDENTIALS}" && -n "${GOOGLE_PROJECT}" ]]; then
-    gcloud auth activate-service-account --key-file <(echo "${GOOGLE_CREDENTIALS}")
+if [[ ! -z ${GOOGLE_CREDENTIALS+x} && ! -z ${GOOGLE_PROJECT+x} ]]; then
+    gcloud auth activate-service-account --key-file - <<<"${GOOGLE_CREDENTIALS}"
     gcloud config set project "${GOOGLE_PROJECT}"
 fi
 
