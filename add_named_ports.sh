@@ -6,15 +6,15 @@ JQ=$(command -v jq || true)
 
 eval "$(${JQ} -r '@sh "INSTANCE_GROUP=\(.instance_group) NAME=\(.name) PORT=\(.port)"')"
 
-TMP_FILE=$(mktemp)
+TMP_DIR=$(mktemp -d)
 function cleanup() {
-  rm -f "${TMP_FILE}"
+  rm -rf "${TMP_DIR}"
 }
 trap cleanup EXIT
 
 if [[ ! -z ${GOOGLE_CREDENTIALS+x} && ! -z ${GOOGLE_PROJECT+x} ]]; then
-  echo "${GOOGLE_CREDENTIALS}" > ${TMP_FILE}
-  export GOOGLE_APPLICATION_CREDENTIALS=${TMP_FILE}
+  export CLOUDSDK_CONFIG=${TMP_DIR}
+  gcloud auth activate-service-account --key-file <(echo "${GOOGLE_CREDENTIALS}")
   gcloud config set project "${GOOGLE_PROJECT}"
 fi
 
