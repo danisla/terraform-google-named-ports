@@ -90,8 +90,8 @@ jobs:
       inputs:
       - name: terraform
       params:
-        service_account_json: {{service_account_json}}
-        project_id: {{project_id}}
+        GOOGLE_CREDENTIALS: {{service_account_json}}
+        GOOGLE_PROJECT: {{project_id}}
       run:
         path: bash
         args:
@@ -100,13 +100,17 @@ jobs:
           set -o pipefail
           apk add --update jq
 
-          set -o pipefail
-          SA_JSON=${PWD}/service_account.json
-          cat > ${SA_JSON} <<EOF
-          $service_account_json
-          EOF
-          gcloud auth activate-service-account --key-file ${SA_JSON}
-          gcloud config set project $project_id
+          TMP_DIR=$(mktemp -d)
+          function cleanup() {
+            rm -rf "${TMP_DIR}"
+          }
+          trap cleanup EXIT
+
+          if [[ ! -z ${GOOGLE_CREDENTIALS+x} && ! -z ${GOOGLE_PROJECT+x} ]]; then
+            export CLOUDSDK_CONFIG=${TMP_DIR}
+            gcloud auth activate-service-account --key-file - <<<"${GOOGLE_CREDENTIALS}"
+            gcloud config set project "${GOOGLE_PROJECT}"
+          fi
 
           EXP_NAME=$(jq -r '.port_name' terraform/metadata)
           EXP_PORT=$(jq -r '.port_number' terraform/metadata)
