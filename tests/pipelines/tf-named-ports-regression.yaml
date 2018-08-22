@@ -34,7 +34,7 @@ jobs:
       backend_bucket: {{backend_bucket}}
       backend_prefix: terraform-google-named-ports/
       env_name: tf-ci-named-ports-basic
-      example_dir: examples/named-ports-basic
+      example_dir: examples/basic
       region: us-central1
       zone: us-central1-a
       TF_VAR_network_name: tf-ci-named-ports-basic
