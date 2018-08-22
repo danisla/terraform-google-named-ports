@@ -1,5 +1,16 @@
-variable gke_username {}
-variable gke_password {}
+# Copyright 2017 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 variable region {
   default = "us-west1"
@@ -43,16 +54,6 @@ resource "google_container_cluster" "default" {
   min_master_version = "${data.google_container_engine_versions.default.latest_node_version}"
   network            = "${google_compute_subnetwork.default.name}"
   subnetwork         = "${google_compute_subnetwork.default.name}"
-
-  // Use legacy ABAC until these issues are resolved: 
-  //   https://github.com/mcuadros/terraform-provider-helm/issues/56
-  //   https://github.com/terraform-providers/terraform-provider-kubernetes/pull/73
-  enable_legacy_abac = true
-
-  master_auth {
-    username = "${var.gke_username}"
-    password = "${var.gke_password}"
-  }
 }
 
 module "named-port" {

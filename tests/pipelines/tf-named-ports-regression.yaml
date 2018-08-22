@@ -1,49 +1,52 @@
-resource_types:
-- name: email
-  type: docker-image
-  source:
-    repository: pcfseceng/email-resource
-- name: terraform
-  type: docker-image
-  source:
-    repository: gcr.io/cloud-solutions-group/terraform-resource
-    tag: latest
-resources:
-- name: terraform-google-named-ports
-  type: git
-  source:
-    uri: {{tf_named_ports_source_repo}}
-    branch: {{tf_named_ports_source_branch}}
-- name: terraform
-  type: terraform
-  source:
-    storage:
-      driver: s3
-      bucket: {{tf_backend_bucket}}
-      bucket_path: terraform-google-named-ports/
-      access_key_id: {{s3_compatible_access_key}}
-      secret_access_key: {{s3_compatible_secret_key}}
-      endpoint: https://storage.googleapis.com
-    env:
-      GOOGLE_PROJECT: {{project_id}}
-      GOOGLE_CREDENTIALS: {{service_account_json}}
-- name: once-a-day
-  type: time
-  source:
-    interval: 1440m
-- name: send-an-email
-  type: email
-  source:
-    smtp:
-      host: {{smtp_host}}
-      port: {{smtp_port}}
-      username: {{smtp_username}}
-      password: {{smtp_password}}
-    from: concourse@vicnastea.io
-    to: [ {{maintainer_email}} ]
-
+# Copyright 2017 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 jobs:
+###
+# run-example-named-ports-basic
+###
+- name: run-example-named-ports-basic
+  serial: true
+  plan:
+  - get: once-a-day
+    trigger: true
+
+  - get: git
+    trigger: false
+
+  - task: run-example-named-ports-basic
+    params:
+      git_src: git
+      git_target: git
+      service_account_json: ((regression-project.service_account_json))
+      project_id: ((regression-project.project_id))
+      backend_bucket: {{backend_bucket}}
+      backend_prefix: terraform-google-named-ports/
+      env_name: tf-ci-named-ports-basic
+      example_dir: examples/named-ports-basic
+      region: us-central1
+      zone: us-central1-a
+      TF_VAR_network_name: tf-ci-named-ports-basic
+      TF_VAR_region: us-central1
+      TF_VAR_zone: us-central1-a
+    on_failure:
+      put: send-an-email
+      params:
+        subject: email/subject-failed
+        body: email/body-failed
+    file: git/tests/tasks/run-example.yaml
+
 ###
 # run-example-gke-named-ports
 ###
@@ -53,93 +56,72 @@ jobs:
   - get: once-a-day
     trigger: true
 
-  - get: terraform-google-named-ports
+  - get: git
     trigger: false
-  
-  - put: terraform
+
+  - task: run-example-gke-named-ports
     params:
-      action: update
-      env_name: tf-ex-gke-named-ports
-      delete_on_failure: true
-      terraform_source: terraform-google-named-ports/examples/gke-named-ports
-      vars:
-        network_name: tf-ci-gke-named-ports
-        region: us-central1
-        zone: us-central1-b
-        gke_username: {{gke_username}}
-        gke_password: {{gke_password}}
-    on_failure:
-      put: send-an-email
-      params:
-        subject_text: "Terraform example apply failed: ${BUILD_PIPELINE_NAME}/${BUILD_JOB_NAME}/${BUILD_NAME}"
-        body_text: "Terraform example apply failed: ${ATC_EXTERNAL_URL}/teams/main/pipelines/${BUILD_PIPELINE_NAME}/jobs/${BUILD_JOB_NAME}/builds/${BUILD_NAME}"
- 
-  - task: test-example-gke-named-ports
+      git_src: git
+      git_target: git
+      service_account_json: ((regression-project.service_account_json))
+      project_id: ((regression-project.project_id))
+      backend_bucket: {{backend_bucket}}
+      backend_prefix: terraform-google-named-ports/
+      env_name: tf-ci-gke-named-ports
+      example_dir: examples/gke-named-ports
+      region: us-west1
+      zone: us-west1-a
+      TF_VAR_network_name: tf-ci-gke-named-ports
+      TF_VAR_region: us-west1
+      TF_VAR_zone: us-west1-a
     on_failure:
       put: send-an-email
       params:
         subject: email/subject-failed
         body: email/body-failed
-    config:
-      platform: linux
-      image_resource:
-        type: docker-image
-        source:
-          repository: gcr.io/cloud-solutions-group/terraform-resource
-          tag: latest
-      inputs:
-      - name: terraform
-      params:
-        GOOGLE_CREDENTIALS: {{service_account_json}}
-        GOOGLE_PROJECT: {{project_id}}
-      run:
-        path: bash
-        args:
-        - -exc
-        - |
-          set -o pipefail
-          apk add --update jq
+    file: git/tests/tasks/run-example.yaml
 
-          TMP_DIR=$(mktemp -d)
-          function cleanup() {
-            rm -rf "${TMP_DIR}"
-          }
-          trap cleanup EXIT
+###
+# Resource types
+###
+resource_types:
+- name: git
+  type: docker-image
+  source:
+    repository: concourse/git-resource
 
-          if [[ ! -z ${GOOGLE_CREDENTIALS+x} && ! -z ${GOOGLE_PROJECT+x} ]]; then
-            export CLOUDSDK_CONFIG=${TMP_DIR}
-            gcloud auth activate-service-account --key-file - <<<"${GOOGLE_CREDENTIALS}"
-            gcloud config set project "${GOOGLE_PROJECT}"
-          fi
+- name: time
+  type: docker-image
+  source:
+    repository: concourse/time-resource
 
-          EXP_NAME=$(jq -r '.port_name' terraform/metadata)
-          EXP_PORT=$(jq -r '.port_number' terraform/metadata)
-          INSTANCE_GROUP=$(jq -r '.instance_group_urls[0]' terraform/metadata)
-          NAMED_PORTS="$(gcloud compute instance-groups get-named-ports ${INSTANCE_GROUP} --format=json | jq -r '.[]|"\(.name)=\(.port)"' | tr '\n' ';')"
+- name: email
+  type: docker-image
+  source:
+    repository: pcfseceng/email-resource
 
-          MATCH="${EXP_NAME}=${EXP_PORT}"
-          if [[ "${NAMED_PORTS}" =~ $MATCH ]]; then
-            echo "PASS: Found named port: $MATCH"
-          else
-            echo "FAIL: Named port not found: $MATCH"
-            exit 1
-          fi
+###
+# Resources
+###
+resources:
+- name: git
+  type: git
+  source:
+    uri: {{uri}}
+    branch: {{branch}}
 
-  - put: terraform
-    get_params:
-      action: destroy
-    params:
-      action: destroy
-      env_name: tf-ex-gke-named-ports
-      terraform_source: terraform-google-named-ports/examples/gke-named-ports
-      vars:
-        network_name: tf-ci-gke-named-ports
-        region: us-central1
-        zone: us-central1-b
-        gke_username: {{gke_username}}
-        gke_password: {{gke_password}}
-    on_failure:
-      put: send-an-email
-      params:
-        subject_text: "Terraform example destroy failed: ${BUILD_PIPELINE_NAME}/${BUILD_JOB_NAME}/${BUILD_NAME}"
-        body_text: "Terraform example destroy failed: ${ATC_EXTERNAL_URL}/teams/main/pipelines/${BUILD_PIPELINE_NAME}/jobs/${BUILD_JOB_NAME}/builds/${BUILD_NAME}"
+- name: once-a-day
+  type: time
+  source:
+    interval: 1440m
+
+- name: send-an-email
+  type: email
+  source:
+    smtp:
+      host: ((common.smtp_host))
+      port: ((common.smtp_port))
+      username: ((common.smtp_username))
+      password: ((common.smtp_password))
+    from: concourse-tf@gcp.solutions
+    to: [ {{maintainer_email}} ]
